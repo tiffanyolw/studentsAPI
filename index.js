@@ -3,7 +3,6 @@ const app = express();
 
 const validation = require("./validation");
 
-app.use(express.urlencoded({extended:false}));
 app.use(express.json());
 
 let reqCount = 0;
@@ -50,7 +49,7 @@ app.post("/", (req, res) => {
 
     let newStudent = req.body;
     students.push(newStudent);
-    res.status(201).send(newStudent);
+    res.status(200).send(newStudent);
 });
 
 // Get all students
