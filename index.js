@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
-
+const config = require("./configurations/config");
+const Student = require("./models/student");
 const validation = require("./validation");
 
 app.use(express.json());
@@ -14,127 +15,117 @@ app.use((req, res, next) => {
     next();
 });
 
-let students = [];
+// Authenticate DB
+config.authenticate().then(() => {
+    console.log("Database connected");
+}).catch((err) => {
+    console.log(err);
+});
 
-// FOR TESTING -----------------------
-students = [
-    {id: 1, name: "Name 1", section: "Science", gpa: 3.2, nationality: "Canadian"},
-    {id: 2, name: "Name 2", section: "Mathematics", gpa: 2.0, nationality: "Australian"},
-    {id: 3, name: "Name 3", section: "Engineering", gpa: 1.4, nationality: "Dutch"},
-    {id: 4, name: "Name 4", section: "Social Science", gpa: 4.0, nationality: "Canadian"},
-    {id: 5, name: "Name 5", section: "Science", gpa: 3.9, nationality: "American"},
-    {id: 6, name: "Name 6", section: "Arts", gpa: 3.1, nationality: "Indian"},
-    {id: 7, name: "Name 7", section: "Social Science", gpa: 2.7, nationality: "American"},
-    {id: 8, name: "Name 8", section: "Arts", gpa: 2.2, nationality: "Canadian"},
-    {id: 9, name: "Name 9", section: "Science", gpa: 3.5, nationality: "American"},
-    {id: 10, name: "Name 10", section: "Engineering", gpa: 1.6, nationality: "Australian"}
-];
-// -----------------------------------
+config.sync({force:false}).then((result) => {
+    console.log("Sync successful");
+}).catch((err) => {
+    console.log(err);
+});
 
 // Add a student
 app.post("/", (req, res) => {
-    let body = req.body;
-
-    if (!validation.isValidStudent(body)) {
+    if (!validation.isValidStudent(req.body)) {
         return res.status(400).send("Incomplete request body");
     }
 
-    if (!Number.isInteger(body.id)) {
-        return res.status(400).send("id must be an integer");
+    let newStudent = {
+        name: req.body.name,
+        section: req.body.section,
+        gpa: req.body.gpa,
+        nationality: req.body.nationality
     }
 
-    if (validation.doesIdExist(students, body.id)) {
-        return res.status(400).send("id already exists for another student");
-    }
-
-    let newStudent = req.body;
-    students.push(newStudent);
-    res.status(200).send(newStudent);
+    Student.create(newStudent).then((result) => {
+        res.send(result);
+    }).catch((err) => {
+        res.status(400).send(err);
+    })
 });
 
 // Get all students
 app.get("/", (req, res) => {
-    res.status(200).send(students);
+    Student.findAll().then((result) => {
+        res.send(result);
+    }).catch((err) => {
+        res.status(400).send(err);
+    });
 });
 
 // Get student with id or section
 app.get("/search", (req, res) => {
     if (req.query.id) {
-        let id = parseInt(req.query.id);
-        
-        if (!Number.isInteger(id)) {
-            return res.status(400).send("id must be an integer");
-        }
-
-        let student = students.find(s => {
-            return s.id === id;
+        Student.findByPk(req.query.id).then((result) => {
+            if (result) {
+                res.send(result);
+            } else {
+                res.send(`No student with id ${req.query.id} found`);
+            }
+        }).catch((err) => {
+            res.status(400).send(err);
         });
-
-        if (!student) {
-            return res.status(200).send(`No student with id ${id} found`);
-        }
-
-        return res.status(200).send(student);
-    
     } else if (req.query.section) {
-        let studentList = students.filter(s => {
-            return s.section === req.query.section;
+        Student.findAll({
+            where: {
+                section: req.query.section
+            }
+        }).then((result) => {
+            res.send(result);
+        }).catch((err) => {
+            res.status(400).send(err);
         });
-
-        return res.status(200).send(studentList);
+    } else {
+        res.redirect("/");
     }
-
-    res.status(200).send(students);
 });
 
 // Update a student
 app.put("/id/:id", (req, res) => {
-    let body = req.body;
-    let id = parseInt(req.params.id);
-
-    if (!Number.isInteger(id)) {
-        return res.status(400).send("id must be an integer");
-    }
-
-    if (!validation.isValidStudent(body)) {
+    if (!validation.isValidStudent(req.body)) {
         return res.status(400).send("Incomplete request body");
     }
 
-    let index = students.findIndex(s => {
-        return s.id === id;
+    Student.findByPk(req.params.id).then((result) => {
+        if (result) {
+            result.name = req.body.name,
+            result.section = req.body.section,
+            result.gpa = req.body.gpa,
+            result.nationality = req.body.nationality
+
+            result.save().then(() => {
+                res.send(result);
+            }).catch((err) => {
+                res.status(400).send(err);
+            });
+        } else {
+            res.status(400).send(`No student with id ${req.params.id} found`);
+        }
+    }).catch((err) => {
+        res.status(400).send(err);
     });
-
-    if (index < 0) {
-        return res.status(200).send(`No student with id ${id} found`);
-    }
-
-    if (id !== body.id) {
-        return res.status(400).send("id cannot be updated");
-    }
-
-    students[index] = req.body;
-    res.status(200).send(students[index]);
 });
 
 // Delete a student
 app.delete("/id/:id", (req, res) => {
-    let id = parseInt(req.params.id);
+    Student.findByPk(req.params.id).then((result) => {
+        if (result) {
+            result.destroy().then(() => {
+                res.send(result);
+            }).catch((err) => {
+                res.status(400).send(err);
+            });
 
-    if (!Number.isInteger(id)) {
-        return res.status(400).send("id must be an integer");
-    }
-
-    let index = students.findIndex(s => {
-        return s.id === id;
+        } else {
+            res.status(400).send(`No student with id ${req.params.id} found`);
+        }
+    }).catch((err) => {
+        res.status(400).send(err);
     });
-    
-    if (index < 0) {
-        return res.status(200).send(`No student with id ${id} found`);
-    }
-
-    let deletedStudent = students[index];
-    students.splice(index, 1);
-    res.status(200).send(deletedStudent);
 });
 
 app.listen(8000, () => {
